@@ -1,0 +1,123 @@
+name: deploy flare-validator-api
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to deploy'
+        required: true
+        default: 'latest'
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+          - development
+
+jobs:
+  deploy:
+    name: deploy to ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download release binary
+        run: |
+          if [ "${{ github.event.inputs.tag }}" = "latest" ]; then
+            DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.assets[0].browser_download_url')
+          else
+            DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.event.inputs.tag }} | jq -r '.assets[0].browser_download_url')
+          fi
+          curl -L $DOWNLOAD_URL -o flare-validator-api
+          chmod +x flare-validator-api
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      
+      - name: Deploy using Docker
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          CONTAINER_NAME: flare-validator-api-${{ github.event.inputs.environment }}
+          APP_PORT: '3000'
+        run: |
+          ssh-keyscan ${{ vars.SERVER_IP }} >> ~/.ssh/known_hosts
+          
+          mkdir -p docker-deploy
+          
+          cat > docker-deploy/Dockerfile << EOF
+          FROM debian:bookworm-slim
+          WORKDIR /app
+          
+          # Install dependencies for Rust binaries
+          RUN apt-get update && apt-get install -y \
+              libssl3 \
+              ca-certificates \
+              tzdata \
+              curl \
+              && rm -rf /var/lib/apt/lists/*
+          
+          COPY flare-validator-api /app/flare-validator-api
+          RUN chmod +x /app/flare-validator-api
+          
+          EXPOSE ${APP_PORT}
+          ENV RUST_LOG=info
+          
+          ENTRYPOINT ["/app/flare-validator-api"]
+          EOF
+          
+          # Create docker-compose.yml
+          cat > docker-deploy/docker-compose.yml << EOF
+          version: '3'
+          services:
+            flare-validator-api:
+              container_name: ${CONTAINER_NAME}
+              build: .
+              restart: unless-stopped
+              ports:
+                - "${APP_PORT}:${APP_PORT}"
+              environment:
+                - RUST_LOG=info
+                - PORT=${APP_PORT}
+          EOF
+          
+          # Copy our binary to the deployment directory
+          cp flare-validator-api docker-deploy/
+          
+          # Create a deployment script
+          cat > docker-deploy/deploy.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          
+          # Stop and remove existing container if it exists
+          docker stop ${CONTAINER_NAME} || true
+          docker rm ${CONTAINER_NAME} || true
+          
+          # Build and start the new container
+          docker compose up -d --build
+          
+          # Show logs
+          docker logs ${CONTAINER_NAME}
+          EOF
+          
+          chmod +x docker-deploy/deploy.sh
+          
+          # Create the deployment directory on the server
+          ssh ${{ vars.SSH_USER }}@${{ vars.SERVER_IP }} "mkdir -p ~/flare-validator-api-${ENV_NAME}"
+          
+          # Copy deployment files
+          scp -r docker-deploy/* ${{ vars.SSH_USER }}@${{ vars.SERVER_IP }}:~/flare-validator-api-${ENV_NAME}/
+          
+          # Execute the deployment
+          ssh ${{ vars.SSH_USER }}@${{ vars.SERVER_IP }} << EOF
+            cd ~/flare-validator-api-${ENV_NAME}
+            
+            export CONTAINER_NAME=${CONTAINER_NAME}
+            
+            ./deploy.sh
+            
+            # Show running containers
+            docker ps | grep flare-validator-api
+          EOF
