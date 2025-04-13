@@ -17,6 +17,8 @@ on:
 
 jobs:
   deploy:
+    env:
+      EXTERNAL_PORT: ${{ github.event.inputs.environment == 'production' && '3760' || github.event.inputs.environment == 'staging' && '3761' || '3762' }}
     name: deploy to ${{ github.event.inputs.environment }}
     runs-on: ubuntu-latest
     steps:
@@ -77,7 +79,7 @@ jobs:
               build: .
               restart: unless-stopped
               ports:
-                - "${APP_PORT}:${APP_PORT}"
+                - "${EXTERNAL_PORT}:3000"
               environment:
                 - RUST_LOG=info
                 - PORT=${APP_PORT}
