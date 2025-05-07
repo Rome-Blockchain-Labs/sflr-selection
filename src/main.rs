@@ -110,6 +110,7 @@ struct FlareProviderSuccessRate {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct FlareDenormalizedEntity {
     id: Option<u32>,
     node_ids: Vec<String>,
