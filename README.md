@@ -61,6 +61,7 @@ docker run -p 3000:3000 flare-validator-api
     {
       "id": 42,
       "name": "4DadsFTSO",
+      "node_id": "NodeID-Ms5oKoFmzxNYgpAnppbY62GYmQcTQbXhV",
       "delegation_address": "0xC522E6A633545872f1afc0cdD7b2D96d97E3dE67",
       "conditions": {
         "ftso_anchor_feeds": true,

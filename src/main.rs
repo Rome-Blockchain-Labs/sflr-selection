@@ -38,6 +38,7 @@ struct RewardRates {
 struct Validator {
     id: u32,
     name: String,
+    node_id: Option<String>,
     delegation_address: Option<String>,
     conditions: Option<Conditions>,
     provider_stats: Option<ProviderStats>,
@@ -109,6 +110,19 @@ struct FlareProviderSuccessRate {
 }
 
 #[derive(Debug, Deserialize)]
+struct FlareDenormalizedEntity {
+    id: Option<u32>,
+    node_ids: Vec<String>,
+    public_key: Option<String>,
+    submit_signatures_address: Option<String>,
+    submit_address: Option<String>,
+    signing_policy_address: Option<String>,
+    delegation_address: Option<String>,
+    rewards_signed: Option<u32>,
+    uptime_signed: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
 struct FlareSigningPolicy {
     delegation_address: Option<String>,
 }
@@ -117,6 +131,7 @@ struct FlareSigningPolicy {
 struct FlareEntity {
     id: u32,
     display_name: Option<String>,
+    denormalizedentity: Option<FlareDenormalizedEntity>,
     entityminimalconditions: Option<FlareEntityMinConditions>,
     rewards: Option<FlareRewards>,
     providersuccessrate: Option<FlareProviderSuccessRate>,
@@ -234,6 +249,7 @@ fn process_entity(entity: &FlareEntity) -> Validator {
     Validator {
         id: entity.id,
         name: entity.display_name.clone().unwrap_or_else(|| "Unknown".to_string()),
+        node_id: entity.denormalizedentity.as_ref().and_then(|d| d.node_ids.first().cloned()),
         delegation_address: entity.denormalizedsigningpolicy.as_ref().and_then(|d| d.delegation_address.clone()),
         conditions,
         provider_stats,
